@@ -37,8 +37,8 @@
     "setupFiles": [
       "<rootDir>/jest.setup.js"
     ],
-    "testPathIgnorePatterns": [
-      "e2e-tests"
+    "testMatch": [
+      "<rootDir>/test/**/*.jest.spec.[jt]s?(x)"
     ]
   },
   "devDependencies": {
