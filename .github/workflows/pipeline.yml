@@ -11,8 +11,68 @@ on:
 jobs:
   simple_deployment_pipeline:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check commit messages
+        id: check
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let skip = false;
+            const pullNumbers = new Set();
+
+            if (context.eventName === 'pull_request') {
+              pullNumbers.add(context.payload.pull_request.number);
+            } else {
+              const before = context.payload.before;
+              const range = /^0+$/.test(before)
+                ? [context.sha, '-1']
+                : [`${before}..${context.sha}`];
+              const messages = await exec.getExecOutput(
+                'git', ['log', '--format=%B', ...range], { silent: true }
+              );
+              skip = messages.stdout.includes('#skip');
+
+              // Recover original PR messages even when a squash message omits #skip.
+              const commits = await exec.getExecOutput(
+                'git', ['rev-list', ...range], { silent: true }
+              );
+              for (const sha of commits.stdout.trim().split('\n').filter(Boolean)) {
+                const pulls = await github.paginate(
+                  github.rest.repos.listPullRequestsAssociatedWithCommit,
+                  { owner, repo, commit_sha: sha, per_page: 100 }
+                );
+                for (const pull of pulls) {
+                  if (pull.merged_at && pull.base.ref === 'main') {
+                    pullNumbers.add(pull.number);
+                  }
+                }
+              }
+            }
+
+            for (const pull_number of pullNumbers) {
+              const commits = await github.paginate(
+                github.rest.pulls.listCommits,
+                { owner, repo, pull_number, per_page: 100 }
+              );
+              skip ||= commits.some(({ commit }) => commit.message.includes('#skip'));
+              // GitHub limits this endpoint to 250 commits; never release on an incomplete check.
+              const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number });
+              if (!skip && commits.length < pull.commits) {
+                throw new Error(`Cannot check every commit in PR #${pull_number}; release blocked.`);
+              }
+            }
+
+            core.setOutput('skip', String(skip));
+
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -29,14 +89,14 @@ jobs:
       - name: Build application
         run: npm run build
       - name: Trigger deployment
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check.outputs.skip == 'false' }}
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: curl --fail --silent --show-error "$RENDER_DEPLOY_HOOK"
 
   tag_release:
-    needs: [simple_deployment_pipeline]
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: simple_deployment_pipeline
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.simple_deployment_pipeline.outputs.skip == 'false' }}
     runs-on: ubuntu-latest
 
     permissions:
