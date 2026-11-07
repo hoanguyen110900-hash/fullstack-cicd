@@ -19,9 +19,14 @@ jobs:
         run: npm run eslint
       - name: Run unit tests
         run: npm test -- --watch=false
-      - name: Build application
-        run: npm run build
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       - name: Run E2E tests
         run: npm run test:e2e
+      - name: Build application
+        run: npm run build
+      - name: Trigger deployment
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl --fail --silent --show-error "$RENDER_DEPLOY_HOOK"
