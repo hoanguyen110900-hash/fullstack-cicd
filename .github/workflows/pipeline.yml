@@ -9,7 +9,7 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  simple_deployment_pipeline:
+  build_and_test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,15 +88,19 @@ jobs:
         run: npm run test:e2e
       - name: Build application
         run: npm run build
+
+  deploy:
+    needs: build_and_test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build_and_test.outputs.skip == 'false' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Trigger deployment
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check.outputs.skip == 'false' }}
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: curl --fail --silent --show-error "$RENDER_DEPLOY_HOOK"
 
   tag_release:
-    needs: simple_deployment_pipeline
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.simple_deployment_pipeline.outputs.skip == 'false' }}
+    needs: deploy
     runs-on: ubuntu-latest
 
     permissions:
@@ -117,8 +121,7 @@ jobs:
           TAG_PREFIX: v
 
   notify_success:
-    needs: [simple_deployment_pipeline, tag_release]
-    if: ${{ success() && needs.simple_deployment_pipeline.result == 'success' && needs.tag_release.result == 'success' }}
+    needs: deploy
     runs-on: ubuntu-latest
     steps:
       - name: Notify Discord on successful deployment
@@ -131,8 +134,8 @@ jobs:
           color: 0x00ff00
 
   notify_failure:
-    needs: [simple_deployment_pipeline, tag_release]
-    if: ${{ always() && contains(join(needs.*.result, ','), 'failure') }}
+    needs: deploy
+    if: ${{ failure() }}
     runs-on: ubuntu-latest
     steps:
       - name: Notify Discord on pipeline failure
