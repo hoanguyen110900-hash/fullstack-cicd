@@ -121,7 +121,7 @@ jobs:
           TAG_PREFIX: v
 
   notify_success:
-    needs: deploy
+    needs: [deploy, tag_release]
     runs-on: ubuntu-latest
     steps:
       - name: Notify Discord on successful deployment
@@ -134,8 +134,8 @@ jobs:
           color: 0x00ff00
 
   notify_failure:
-    needs: deploy
-    if: ${{ failure() }}
+    needs: [build_and_test, deploy, tag_release]
+    if: ${{ always() && contains(join(needs.*.result, ','), 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - name: Notify Discord on pipeline failure
@@ -145,7 +145,7 @@ jobs:
           status: failure
           title: 'CI/CD Pipeline Failed'
           description: |
-            Commit: ${{ github.event.head_commit.message }}
+            Commit: ${{ github.event.head_commit.message || github.event.pull_request.title }}
             Author: ${{ github.actor }}
             SHA: ${{ github.sha }}
             Repository: ${{ github.repository }}
