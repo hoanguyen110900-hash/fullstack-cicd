@@ -109,9 +109,42 @@ jobs:
           fetch-depth: 0
 
       - name: Bump version and push tag
-        uses: anothrNick/github-tag-action@1.75.0
+        uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
           RELEASE_BRANCHES: main
           TAG_PREFIX: v
+
+  notify_success:
+    needs: [simple_deployment_pipeline, tag_release]
+    if: ${{ success() && needs.simple_deployment_pipeline.result == 'success' && needs.tag_release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Discord on successful deployment
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: success
+          title: 'Deployment successful'
+          description: 'A new version has been deployed successfully.'
+          color: 0x00ff00
+
+  notify_failure:
+    needs: [simple_deployment_pipeline, tag_release]
+    if: ${{ always() && contains(join(needs.*.result, ','), 'failure') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Discord on pipeline failure
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: failure
+          title: 'CI/CD Pipeline Failed'
+          description: |
+            Commit: ${{ github.event.head_commit.message }}
+            Author: ${{ github.actor }}
+            SHA: ${{ github.sha }}
+            Repository: ${{ github.repository }}
+          url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          color: 0xff0000
