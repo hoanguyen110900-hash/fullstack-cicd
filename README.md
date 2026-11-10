@@ -11,3 +11,6 @@ Start by running `npm install` inside the project folder
 `npm run eslint` to run eslint
 `npm run build` to make a production build
 `npm run start-prod` to run your production build
+
+Phonebook CI (exercise 21, 22): https://github.com/hoanguyen110900-hash/fullstack-cicd.git
+Pokedex Render: https://fullstack-cicd-gt38.onrender.com
